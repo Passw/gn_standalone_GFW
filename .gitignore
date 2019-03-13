@@ -67,3 +67,5 @@ Thumbs.db
 /_out
 # VSChromium configuration file
 vs-chromium-project.txt
+compile_commands.json
+*.o.d
