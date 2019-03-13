@@ -53,6 +53,13 @@ sun@sun:~/gn_example$
   2. target
   3. current
 
+## Key Concepts
+
+- label
+- group
+- target
+- config
+
 ## Build and Run
 
 1.  `gn gen out/Default`
