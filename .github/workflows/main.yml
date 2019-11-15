@@ -1,0 +1,28 @@
+name: CI
+
+on: [push]
+
+jobs:
+  build:
+
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v1
+    - name: Echo `Generate Ninja ...`
+      run: echo Generate Ninja ...
+    - name: Build `gn`
+      run: |
+        echo $PWD,
+        echo $HOME,
+        sudo apt -y install python ninja-build
+        sudo apt -y autoremove
+        python build/gen.py
+        ninja -C out/
+        ninja -C out/ -t compdb cc cxx objc objcxx > compile_commands.json
+        out/gn_unittests
+    - name: Run `gn help`
+      run: |
+        echo $PWD
+        cd out
+        ./gn help
