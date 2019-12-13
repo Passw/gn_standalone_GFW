@@ -1,6 +1,11 @@
 name: CI
 
-on: [push]
+#on: [push]
+on:
+  schedule:
+    # https://pubs.opengroup.org/onlinepubs/9699919799/utilities/crontab.html#tag_20_25_07
+    # * is a special character in YAML so you have to quote this string
+    - cron:  '0 23 * * *'
 
 jobs:
   build:
