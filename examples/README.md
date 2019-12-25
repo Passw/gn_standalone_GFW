@@ -204,7 +204,7 @@ Don't miss the ".gn" file in this directory!
 ------------------------------------------------------------------
 
 
-# [GN's DSL](https://gn.googlesource.com/gn/+/refs/heads/master/docs/reference.md) is ***ugly*** and ***confusing***, better to choose [Bazel](https://github.com/bazelbuild/bazel)
+# [~~GN's DSL~~](https://gn.googlesource.com/gn/+/refs/heads/master/docs/reference.md) [GN's DSL](../docs/reference.md) is ***ugly*** and ***confusing***, better to choose [Bazel](https://github.com/bazelbuild/bazel)
 
 > DSL (Domain Specific Language)
 
