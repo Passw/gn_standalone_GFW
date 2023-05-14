@@ -20,7 +20,7 @@ jobs:
       run: |
         echo $PWD,
         echo $HOME,
-        sudo apt -y install python ninja-build
+        sudo apt -y install python-is-python3 ninja-build
         sudo apt -y autoremove
         python build/gen.py
         ninja -C out/
