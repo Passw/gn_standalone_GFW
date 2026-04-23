@@ -19,6 +19,7 @@
     *   [outputs: Which files a source/target make.](#cmd_outputs)
     *   [path: Find paths between two targets.](#cmd_path)
     *   [refs: Find stuff referencing a target or file.](#cmd_refs)
+    *   [suggest: Suggest fixes to build graph based on includes.](#cmd_suggest)
 *   [Target declarations](#targets)
     *   [action: Declare a target that runs a script a single time.](#func_action)
     *   [action_foreach: Declare a target that runs a script over a set of files.](#func_action_foreach)
@@ -1393,6 +1394,23 @@
           --all --as=output
       Display the executable file names of all test executables
       potentially affected by a change to the given file.
+```
+### <a name="cmd_suggest"></a>**suggest**: Suggest fixes to build graph based on includes.&nbsp;[Back to Top](#gn-reference)
+
+```
+  gn suggest <out_dir> includer1=included1 includer2=included2...
+
+  Where each includer or included is either:
+  * A label
+  * A module name (usually the same as the label)
+  * A file path relative to the build directory
+  * An absolute file path (eg. "//foo/bar.txt")
+
+  Eg. gn suggest out_dir path/to/target.cc=foo/bar.h
+
+  Will print a suggestion like:
+  Request: path/to/target.cc wants to depend on foo/bar.h
+  Suggestion: add deps = [ "//foo:bar" ] to "//path/to:target" (defined in //path/to/BUILD.gn:1234)
 ```
 ## <a name="targets"></a>Target declarations
 

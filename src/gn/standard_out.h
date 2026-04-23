@@ -25,7 +25,7 @@ enum HtmlEscaping {
   DEFAULT_ESCAPING,
 };
 
-void OutputString(const std::string& output,
+void OutputString(std::string_view output,
                   TextDecoration dec = DECORATION_NONE,
                   HtmlEscaping = DEFAULT_ESCAPING);
 

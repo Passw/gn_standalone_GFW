@@ -413,6 +413,12 @@ Target::Target(const Settings* settings,
 
 Target::~Target() = default;
 
+Location Target::user_friendly_location() const {
+  if (!user_friendly_location_.is_null())
+    return user_friendly_location_;
+  return defined_from()->GetRange().begin();
+}
+
 // A technical note on accessors defined below: Using a static global
 // constant is much faster at runtime than using a static local one.
 //

@@ -452,6 +452,13 @@ class Target : public Item {
     module_name_ = std::move(module_name);
   }
 
+  // Similar to defined_from(), but for targets created via templates, returns
+  // the invoker of the template rather than the template definition.
+  Location user_friendly_location() const;
+  void set_user_friendly_location(Location location) {
+    user_friendly_location_ = location;
+  }
+
   // Computes and returns the outputs of this target expressed as SourceFiles.
   //
   // For binary target this depends on the tool for this target so the toolchain
@@ -541,6 +548,7 @@ class Target : public Item {
 
   std::string module_name_;
   ModuleType module_type_;
+  Location user_friendly_location_;
   // Only filled if the module type is GENERATED_*
   SourceFile generated_modulemap_file_;
   // For performance reasons we cache private_modulemap_file.

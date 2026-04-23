@@ -42,6 +42,14 @@ TargetGenerator::TargetGenerator(Target* target,
 TargetGenerator::~TargetGenerator() = default;
 
 void TargetGenerator::Run() {
+  // If the target is defined from a template, define_from is probably
+  // not particularly helpful for the user. So instead, we record the
+  // location of the template invocation in the target.
+  const auto& entries = scope_->GetTemplateInvocationEntries();
+  if (!entries.empty()) {
+    target_->set_user_friendly_location(entries.front().location);
+  }
+
   // All target types use these.
   if (!FillDependentConfigs())
     return;

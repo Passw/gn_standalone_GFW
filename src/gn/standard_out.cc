@@ -104,7 +104,7 @@ bool IsColorEnabled() {
 
 #if defined(OS_WIN)
 
-void OutputString(const std::string& output,
+void OutputString(std::string_view output,
                   TextDecoration dec,
                   HtmlEscaping escaping) {
   EnsureInitialized();
@@ -141,7 +141,7 @@ void OutputString(const std::string& output,
     }
   }
 
-  std::string tmpstr = output;
+  std::string tmpstr = std::string(output);
   if (is_markdown && dec == DECORATION_YELLOW) {
     // https://code.google.com/p/gitiles/issues/detail?id=77
     // Gitiles will replace "--" with an em dash in non-code text.
@@ -167,7 +167,7 @@ void OutputString(const std::string& output,
 
 #else
 
-void OutputString(const std::string& output,
+void OutputString(std::string_view output,
                   TextDecoration dec,
                   HtmlEscaping escaping) {
   EnsureInitialized();
@@ -198,7 +198,7 @@ void OutputString(const std::string& output,
     }
   }
 
-  std::string tmpstr = output;
+  std::string tmpstr = std::string(output);
   if (is_markdown && dec == DECORATION_YELLOW) {
     // https://code.google.com/p/gitiles/issues/detail?id=77
     // Gitiles will replace "--" with an em dash in non-code text.
