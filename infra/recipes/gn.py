@@ -274,6 +274,11 @@ def RunSteps(api, repository):
                 with api.context(env={'CLANG_FORMAT': cipd_dir.join('bin', 'clang-format')}):
                   api.step('Check tools/run_formatter.sh',
                            [src_dir.join('tools', 'run_formatter.sh'), '--diff'])
+                # We've already built gn, so tell update_reference not to rebuild it.
+                with api.context(env={'NOBUILD': '1'}):
+                  api.step('Check tools/update_reference.sh',
+                          [src_dir.join('tools', 'update_reference.sh'), '--diff'])
+
             if config['name'] != 'release':
               continue
 
