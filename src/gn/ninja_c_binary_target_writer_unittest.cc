@@ -66,8 +66,9 @@ TEST_F(NinjaCBinaryTargetWriterTest, SourceSet) {
         "  source_file_part = input2.cc\n"
         "  source_name_part = input2\n"
         "\n"
-        "build phony/foo/bar: phony obj/foo/bar.input1.o "
-        "obj/foo/bar.input2.o ../../foo/input3.o ../../foo/input4.obj\n";
+        "build phony/foo/bar.linkdeps: phony obj/foo/bar.input1.o "
+        "obj/foo/bar.input2.o ../../foo/input3.o ../../foo/input4.obj\n"
+        "build phony/foo/bar: phony phony/foo/bar.linkdeps\n";
     std::string out_str = out.str();
     EXPECT_EQ(expected, out_str);
   }
@@ -98,7 +99,7 @@ TEST_F(NinjaCBinaryTargetWriterTest, SourceSet) {
         // order.
         "build ./libshlib.so: solink obj/foo/bar.input1.o "
         "obj/foo/bar.input2.o ../../foo/input3.o ../../foo/input4.obj "
-        "|| phony/foo/bar\n"
+        "|| phony/foo/bar.linkdeps\n"
         "  ldflags =\n"
         "  libs =\n"
         "  frameworks =\n"
@@ -132,7 +133,7 @@ TEST_F(NinjaCBinaryTargetWriterTest, SourceSet) {
         "\n"
         // There are no sources so there are no params to alink. (In practice
         // this will probably fail in the archive tool.)
-        "build obj/foo/libstlib.a: alink || phony/foo/bar\n"
+        "build obj/foo/libstlib.a: alink || phony/foo/bar.linkdeps\n"
         "  arflags =\n"
         "  output_extension =\n"
         "  output_dir =\n";
@@ -161,7 +162,7 @@ TEST_F(NinjaCBinaryTargetWriterTest, SourceSet) {
         // order.
         "build obj/foo/libstlib.a: alink obj/foo/bar.input1.o "
         "obj/foo/bar.input2.o ../../foo/input3.o ../../foo/input4.obj "
-        "|| phony/foo/bar\n"
+        "|| phony/foo/bar.linkdeps\n"
         "  arflags =\n"
         "  output_extension =\n"
         "  output_dir =\n";
@@ -218,9 +219,164 @@ TEST_F(NinjaCBinaryTargetWriterTest, AdditionalOutputs) {
       "  source_file_part = input1.cc\n"
       "  source_name_part = input1\n"
       "\n"
-      "build phony/foo/bar: phony obj/foo/bar.input1.o obj/foo/input1.dwo\n";
+      "build phony/foo/bar.linkdeps: phony obj/foo/bar.input1.o\n"
+      "build phony/foo/bar: phony phony/foo/bar.linkdeps obj/foo/input1.dwo\n";
 
   EXPECT_EQ(expected, out.str());
+}
+
+TEST_F(NinjaCBinaryTargetWriterTest, AdditionalOutputsSourceSet) {
+  Err err;
+  TestWithScope setup;
+
+  Value outputs_value(nullptr, Value::LIST);
+  outputs_value.list_value().push_back(
+      Value(nullptr, "{{target_out_dir}}/{{source_name_part}}.dwo"));
+
+  Config config(setup.settings(), Label(SourceDir("//foo/"), "split_dwarf"));
+  config.visibility().SetPublic();
+
+  std::vector<SubstitutionPattern> patterns;
+  for (const auto& v : outputs_value.list_value()) {
+    SubstitutionPattern pattern;
+    ASSERT_TRUE(pattern.Parse(v, &err));
+    patterns.push_back(std::move(pattern));
+  }
+  config.own_values().c_additional_outputs() = std::move(patterns);
+  ASSERT_TRUE(config.OnResolved(&err));
+
+  Target target(setup.settings(), Label(SourceDir("//foo/"), "bar"));
+  target.set_output_type(Target::SOURCE_SET);
+  target.visibility().SetPublic();
+  target.sources().push_back(SourceFile("//foo/input1.cc"));
+  target.source_types_used().Set(SourceFile::SOURCE_CPP);
+  target.configs().push_back(LabelConfigPair(&config));
+  target.SetToolchain(setup.toolchain());
+  ASSERT_TRUE(target.OnResolved(&err));
+
+  std::ostringstream out;
+  NinjaCBinaryTargetWriter writer(&target, out);
+  writer.Run();
+
+  const char expected[] =
+      "defines =\n"
+      "include_dirs =\n"
+      "cflags =\n"
+      "cflags_cc =\n"
+      "root_out_dir = .\n"
+      "target_gen_dir = gen/foo\n"
+      "target_out_dir = obj/foo\n"
+      "target_output_name = bar\n"
+      "\n"
+      "build obj/foo/bar.input1.o obj/foo/input1.dwo: cxx "
+      "../../foo/input1.cc\n"
+      "  source_file_part = input1.cc\n"
+      "  source_name_part = input1\n"
+      "\n"
+      "build phony/foo/bar.linkdeps: phony obj/foo/bar.input1.o\n"
+      "build phony/foo/bar: phony phony/foo/bar.linkdeps obj/foo/input1.dwo\n";
+
+  EXPECT_EQ(expected, out.str());
+}
+
+TEST_F(NinjaCBinaryTargetWriterTest,
+       SourceSetWithAdditionalOutputsToStaticLib) {
+  Err err;
+  TestWithScope setup;
+
+  Value outputs_value(nullptr, Value::LIST);
+  outputs_value.list_value().push_back(
+      Value(nullptr, "{{target_out_dir}}/{{source_name_part}}.dwo"));
+
+  Config config(setup.settings(), Label(SourceDir("//foo/"), "split_dwarf"));
+  config.visibility().SetPublic();
+
+  std::vector<SubstitutionPattern> patterns;
+  for (const auto& v : outputs_value.list_value()) {
+    SubstitutionPattern pattern;
+    ASSERT_TRUE(pattern.Parse(v, &err));
+    patterns.push_back(std::move(pattern));
+  }
+  config.own_values().c_additional_outputs() = std::move(patterns);
+  ASSERT_TRUE(config.OnResolved(&err));
+
+  // Source set B (dependee)
+  Target target_b(setup.settings(), Label(SourceDir("//foo/"), "b"));
+  target_b.set_output_type(Target::SOURCE_SET);
+  target_b.sources().push_back(SourceFile("//foo/b.cc"));
+  target_b.sources().push_back(SourceFile("//foo/b2.cc"));
+  target_b.source_types_used().Set(SourceFile::SOURCE_CPP);
+  target_b.visibility().SetPublic();
+  target_b.configs().push_back(LabelConfigPair(&config));
+  target_b.SetToolchain(setup.toolchain());
+  ASSERT_TRUE(target_b.OnResolved(&err)) << err.message();
+
+  // Static library A (depender)
+  Target target_a(setup.settings(), Label(SourceDir("//foo/"), "a"));
+  target_a.set_output_type(Target::STATIC_LIBRARY);
+  target_a.sources().push_back(SourceFile("//foo/a.cc"));
+  target_a.source_types_used().Set(SourceFile::SOURCE_CPP);
+  target_a.private_deps().push_back(LabelTargetPair(&target_b));
+  target_a.SetToolchain(setup.toolchain());
+  ASSERT_TRUE(target_a.OnResolved(&err)) << err.message();
+
+  // Verify B's output
+  {
+    std::ostringstream out;
+    NinjaCBinaryTargetWriter writer(&target_b, out);
+    writer.Run();
+
+    const char expected[] =
+        "defines =\n"
+        "include_dirs =\n"
+        "cflags =\n"
+        "cflags_cc =\n"
+        "root_out_dir = .\n"
+        "target_gen_dir = gen/foo\n"
+        "target_out_dir = obj/foo\n"
+        "target_output_name = b\n"
+        "\n"
+        "build obj/foo/b.b.o obj/foo/b.dwo: cxx ../../foo/b.cc\n"
+        "  source_file_part = b.cc\n"
+        "  source_name_part = b\n"
+        "build obj/foo/b.b2.o obj/foo/b2.dwo: cxx ../../foo/b2.cc\n"
+        "  source_file_part = b2.cc\n"
+        "  source_name_part = b2\n"
+        "\n"
+        "build phony/foo/b.linkdeps: phony obj/foo/b.b.o obj/foo/b.b2.o\n"
+        "build phony/foo/b: phony phony/foo/b.linkdeps obj/foo/b.dwo "
+        "obj/foo/b2.dwo\n";
+
+    EXPECT_EQ(expected, out.str());
+  }
+
+  // Verify A's output
+  {
+    std::ostringstream out;
+    NinjaCBinaryTargetWriter writer(&target_a, out);
+    writer.Run();
+
+    const char expected[] =
+        "defines =\n"
+        "include_dirs =\n"
+        "cflags =\n"
+        "cflags_cc =\n"
+        "root_out_dir = .\n"
+        "target_gen_dir = gen/foo\n"
+        "target_out_dir = obj/foo\n"
+        "target_output_name = liba\n"
+        "\n"
+        "build obj/foo/liba.a.o: cxx ../../foo/a.cc\n"
+        "  source_file_part = a.cc\n"
+        "  source_name_part = a\n"
+        "\n"
+        "build obj/foo/liba.a: alink obj/foo/liba.a.o || phony/foo/b.linkdeps\n"
+        "  arflags =\n"
+        "  output_extension =\n"
+        "  output_dir =\n";
+
+    EXPECT_EQ(expected, out.str());
+  }
 }
 
 TEST_F(NinjaCBinaryTargetWriterTest, EscapeDefines) {
@@ -478,10 +634,12 @@ TEST_F(NinjaCBinaryTargetWriterTest, NoHardDepsToNoPublicHeaderTarget) {
       "  source_file_part = generated.cc\n"
       "  source_name_part = generated\n"
       "\n"
-      "build phony/foo/gen_obj: phony obj/BUILD_DIR/gen_obj.generated.o"
+      "build phony/foo/gen_obj.linkdeps: phony "
+      "obj/BUILD_DIR/gen_obj.generated.o"
       // The order-only dependency here is strictly unnecessary since the
       // sources list this as an order-only dep.
-      " || phony/foo/generate\n";
+      " || phony/foo/generate\n"
+      "build phony/foo/gen_obj: phony phony/foo/gen_obj.linkdeps\n";
 
   std::string obj_str = obj_out.str();
   EXPECT_EQ(std::string(obj_expected), obj_str);
@@ -515,7 +673,7 @@ TEST_F(NinjaCBinaryTargetWriterTest, NoHardDepsToNoPublicHeaderTarget) {
       // The order-only dependency here is strictly unnecessary since
       // obj/out/Debug/gen_obj.generated.o has dependency to
       // obj/foo/gen_obj.stamp
-      " || phony/foo/gen_obj\n"
+      " || phony/foo/gen_obj.linkdeps\n"
       "  ldflags =\n"
       "  libs =\n"
       "  frameworks =\n"
@@ -777,8 +935,9 @@ TEST_F(NinjaCBinaryTargetWriterTest, SourceSetDataDeps) {
       "  source_file_part = inter.cc\n"
       "  source_name_part = inter\n"
       "\n"
-      "build phony/foo/inter: phony obj/foo/inter.inter.o || "
-      "./data_target\n";
+      "build phony/foo/inter.linkdeps: phony obj/foo/inter.inter.o || "
+      "./data_target\n"
+      "build phony/foo/inter: phony phony/foo/inter.linkdeps\n";
   EXPECT_EQ(inter_expected, inter_out.str());
 
   // Final target.
@@ -814,7 +973,7 @@ TEST_F(NinjaCBinaryTargetWriterTest, SourceSetDataDeps) {
       "  source_name_part = final\n"
       "\n"
       "build ./exe: link obj/foo/exe.final.o obj/foo/inter.inter.o || "
-      "phony/foo/inter\n"
+      "phony/foo/inter.linkdeps\n"
       "  ldflags =\n"
       "  libs =\n"
       "  frameworks =\n"
@@ -1016,9 +1175,11 @@ TEST_F(NinjaCBinaryTargetWriterTest, WinPrecompiledHeaders) {
         "  source_file_part = input2.c\n"
         "  source_name_part = input2\n"
         "\n"
-        "build withpch/phony/foo/no_pch_target: "
+        "build withpch/phony/foo/no_pch_target.linkdeps: "
         "phony withpch/obj/foo/no_pch_target.input1.o "
-        "withpch/obj/foo/no_pch_target.input2.o\n";
+        "withpch/obj/foo/no_pch_target.input2.o\n"
+        "build withpch/phony/foo/no_pch_target: "
+        "phony withpch/phony/foo/no_pch_target.linkdeps\n";
     EXPECT_EQ(no_pch_expected, out.str());
   }
 
@@ -1078,12 +1239,14 @@ TEST_F(NinjaCBinaryTargetWriterTest, WinPrecompiledHeaders) {
         "  source_file_part = input2.c\n"
         "  source_name_part = input2\n"
         "\n"
-        "build withpch/phony/foo/pch_target: phony "
+        "build withpch/phony/foo/pch_target.linkdeps: phony "
         "withpch/obj/foo/pch_target.input1.o "
         "withpch/obj/foo/pch_target.input2.o "
         // The precompiled object files were added to the outputs.
         "withpch/obj/build/pch_target.precompile.c.o "
-        "withpch/obj/build/pch_target.precompile.cc.o\n";
+        "withpch/obj/build/pch_target.precompile.cc.o\n"
+        "build withpch/phony/foo/pch_target: phony "
+        "withpch/phony/foo/pch_target.linkdeps\n";
     EXPECT_EQ(pch_win_expected, out.str());
   }
 }
@@ -1162,9 +1325,11 @@ TEST_F(NinjaCBinaryTargetWriterTest, GCCPrecompiledHeaders) {
         "  source_file_part = input2.c\n"
         "  source_name_part = input2\n"
         "\n"
-        "build withpch/phony/foo/no_pch_target: "
+        "build withpch/phony/foo/no_pch_target.linkdeps: "
         "phony withpch/obj/foo/no_pch_target.input1.o "
-        "withpch/obj/foo/no_pch_target.input2.o\n";
+        "withpch/obj/foo/no_pch_target.input2.o\n"
+        "build withpch/phony/foo/no_pch_target: "
+        "phony withpch/phony/foo/no_pch_target.linkdeps\n";
     EXPECT_EQ(no_pch_expected, out.str());
   }
 
@@ -1222,9 +1387,11 @@ TEST_F(NinjaCBinaryTargetWriterTest, GCCPrecompiledHeaders) {
         "  source_file_part = input2.c\n"
         "  source_name_part = input2\n"
         "\n"
-        "build withpch/phony/foo/pch_target: "
+        "build withpch/phony/foo/pch_target.linkdeps: "
         "phony withpch/obj/foo/pch_target.input1.o "
-        "withpch/obj/foo/pch_target.input2.o\n";
+        "withpch/obj/foo/pch_target.input2.o\n"
+        "build withpch/phony/foo/pch_target: "
+        "phony withpch/phony/foo/pch_target.linkdeps\n";
     EXPECT_EQ(pch_gcc_expected, out.str());
   }
 }
@@ -1293,8 +1460,9 @@ TEST_F(NinjaCBinaryTargetWriterTest, InputFiles) {
         "  source_file_part = input2.cc\n"
         "  source_name_part = input2\n"
         "\n"
-        "build phony/foo/bar: phony obj/foo/bar.input1.o "
-        "obj/foo/bar.input2.o\n";
+        "build phony/foo/bar.linkdeps: phony obj/foo/bar.input1.o "
+        "obj/foo/bar.input2.o\n"
+        "build phony/foo/bar: phony phony/foo/bar.linkdeps\n";
 
     EXPECT_EQ(expected, out.str());
   }
@@ -1370,8 +1538,9 @@ TEST_F(NinjaCBinaryTargetWriterTest, InputFiles) {
         "  source_file_part = input2.cc\n"
         "  source_name_part = input2\n"
         "\n"
-        "build phony/foo/bar: phony obj/foo/bar.input1.o "
-        "obj/foo/bar.input2.o\n";
+        "build phony/foo/bar.linkdeps: phony obj/foo/bar.input1.o "
+        "obj/foo/bar.input2.o\n"
+        "build phony/foo/bar: phony phony/foo/bar.linkdeps\n";
 
     EXPECT_EQ(expected, out.str());
   }
@@ -1425,8 +1594,9 @@ TEST_F(NinjaCBinaryTargetWriterTest, InputFiles) {
         "  source_file_part = input2.cc\n"
         "  source_name_part = input2\n"
         "\n"
-        "build phony/foo/bar: phony obj/foo/bar.input1.o "
-        "obj/foo/bar.input2.o\n";
+        "build phony/foo/bar.linkdeps: phony obj/foo/bar.input1.o "
+        "obj/foo/bar.input2.o\n"
+        "build phony/foo/bar: phony phony/foo/bar.linkdeps\n";
 
     EXPECT_EQ(expected, out.str());
   }
@@ -1659,8 +1829,8 @@ TEST_F(NinjaCBinaryTargetWriterTest, RlibInLibrary) {
       "obj/dylib/libdylib.so | "
       "obj/pub_in_staticlib/libpub_in_staticlib.rlib "
       "obj/priv_in_staticlib/libpriv_in_staticlib.rlib || "
-      "phony/pub_sset_in_staticlib/pub_sset_in_staticlib "
-      "phony/priv_sset_in_staticlib/priv_sset_in_staticlib\n"
+      "phony/pub_sset_in_staticlib/pub_sset_in_staticlib.linkdeps "
+      "phony/priv_sset_in_staticlib/priv_sset_in_staticlib.linkdeps\n"
       "  ldflags =\n"
       "  libs =\n"
       "  frameworks =\n"
@@ -2395,7 +2565,8 @@ TEST_F(NinjaCBinaryTargetWriterTest, ModuleMapInSourceSet) {
       "  source_file_part = bar.modulemap\n"
       "  source_name_part = bar\n"
       "\n"
-      "build phony/foo/bar: phony obj/foo/bar.bar.o obj/foo/bar.bar.pcm\n";
+      "build phony/foo/bar.linkdeps: phony obj/foo/bar.bar.o\n"
+      "build phony/foo/bar: phony phony/foo/bar.linkdeps obj/foo/bar.bar.pcm\n";
   std::string out_str = out.str();
   EXPECT_EQ(expected, out_str);
 }
@@ -2435,9 +2606,9 @@ TEST_F(NinjaCBinaryTargetWriterTest, SwiftModule) {
         "obj/foo/file2.o: swift ../../foo/file1.swift ../../foo/file2.swift\n"
         "  restat = 1\n"
         "\n"
-        "build phony/foo/foo: phony"
-        " gen/foo/foo.h obj/foo/Foo.swiftmodule"
-        " obj/foo/file1.o obj/foo/file2.o\n";
+        "build phony/foo/foo.linkdeps: phony obj/foo/file1.o obj/foo/file2.o\n"
+        "build phony/foo/foo: phony phony/foo/foo.linkdeps gen/foo/foo.h "
+        "obj/foo/Foo.swiftmodule\n";
 
     const std::string out_str = out.str();
     EXPECT_EQ(expected, out_str);
@@ -2473,9 +2644,10 @@ TEST_F(NinjaCBinaryTargetWriterTest, SwiftModule) {
         "../../bar/bar.swift || phony/foo/foo\n"
         "  restat = 1\n"
         "\n"
-        "build phony/bar/bar: phony"
-        " gen/bar/bar.h obj/bar/Bar.swiftmodule obj/bar/bar.o "
-        "|| phony/foo/foo\n";
+        "build phony/bar/bar.linkdeps: phony obj/bar/bar.o || "
+        "phony/foo/foo.linkdeps\n"
+        "build phony/bar/bar: phony phony/bar/bar.linkdeps gen/bar/bar.h "
+        "obj/bar/Bar.swiftmodule\n";
 
     const std::string out_str = out.str();
     EXPECT_EQ(expected, out_str);
@@ -2519,9 +2691,10 @@ TEST_F(NinjaCBinaryTargetWriterTest, SwiftModule) {
         "../../bar/bar.swift || phony/bar/group phony/foo/foo\n"
         "  restat = 1\n"
         "\n"
-        "build phony/bar/bar: phony"
-        " gen/bar/bar.h obj/bar/Bar.swiftmodule obj/bar/bar.o "
-        "|| phony/bar/group phony/foo/foo\n";
+        "build phony/bar/bar.linkdeps: phony obj/bar/bar.o || phony/bar/group "
+        "phony/foo/foo.linkdeps\n"
+        "build phony/bar/bar: phony phony/bar/bar.linkdeps gen/bar/bar.h "
+        "obj/bar/Bar.swiftmodule\n";
 
     const std::string out_str = out.str();
     EXPECT_EQ(expected, out_str);
@@ -2551,7 +2724,7 @@ TEST_F(NinjaCBinaryTargetWriterTest, SwiftModule) {
         "\n"
         "build ./bar: link obj/foo/file1.o obj/foo/file2.o "
         "| obj/foo/Foo.swiftmodule "
-        "|| phony/foo/foo\n"
+        "|| phony/foo/foo.linkdeps\n"
         "  ldflags =\n"
         "  libs =\n"
         "  frameworks =\n"
@@ -3058,7 +3231,8 @@ TEST_F(NinjaCBinaryTargetWriterTest, ModuleMapGeneration) {
       "  source_file_part = source1.cc\n"
       "  source_name_part = source1\n"
       "\n"
-      "build phony/foo/bar: phony obj/foo/bar.source1.o\n";
+      "build phony/foo/bar.linkdeps: phony obj/foo/bar.source1.o\n"
+      "build phony/foo/bar: phony phony/foo/bar.linkdeps\n";
   writer.Run();
   std::string ninja_str = ninja_out.str();
   EXPECT_EQ(expected_ninja, ninja_str);
@@ -3204,7 +3378,8 @@ TEST_F(NinjaCBinaryTargetWriterTest, ModuleMapGeneration) {
       "  source_file_part = root.cc\n"
       "  source_name_part = root\n"
       "\n"
-      "build phony/foo/root: phony obj/foo/root.root.o\n";
+      "build phony/foo/root.linkdeps: phony obj/foo/root.root.o\n"
+      "build phony/foo/root: phony phony/foo/root.linkdeps\n";
 
   EXPECT_EQ(expected_root_ninja, root_ninja_str);
 }
