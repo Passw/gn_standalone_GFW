@@ -931,6 +931,7 @@ def WriteGNNinja(path, platform, host, options, args_list):
   if platform.is_posix() or platform.is_zos():
     static_libraries['base']['sources'].extend([
         'src/base/files/file_enumerator_posix.cc',
+        'src/base/files/file_path_posix.cc',
         'src/base/files/file_posix.cc',
         'src/base/files/file_util_posix.cc',
         'src/base/posix/file_descriptor_shuffle.cc',
@@ -943,6 +944,7 @@ def WriteGNNinja(path, platform, host, options, args_list):
   if platform.is_windows():
     static_libraries['base']['sources'].extend([
         'src/base/files/file_enumerator_win.cc',
+        'src/base/files/file_path_win.cc',
         'src/base/files/file_util_win.cc',
         'src/base/files/file_win.cc',
         'src/base/win/registry.cc',
