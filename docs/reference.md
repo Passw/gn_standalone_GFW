@@ -8566,6 +8566,7 @@
     *   --args: Specifies build arguments overrides.
     *   --color: Force colored output.
     *   --dotfile: Override the name of the ".gn" file.
+    *   --enumerate-files-with-git: Use git to list files.
     *   --error-limit: Limit the number of errors or warnings to print.
     *   --fail-on-unused-args: Treat unused build args as fatal errors.
     *   --markdown: Write help output in the Markdown format.
@@ -8583,3 +8584,4 @@
     *   -v: Verbose logging.
     *   --version: Prints the GN version number and exits.
 ```
+
