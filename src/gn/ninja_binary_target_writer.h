@@ -48,6 +48,10 @@ class NinjaBinaryTargetWriter : public NinjaTargetWriter {
   // object files from source sets we need to link.
   ClassifiedDeps GetClassifiedDeps() const;
 
+  // Expands group dependencies and returns order-only dependencies.
+  std::vector<OutputFile> GetOrderOnlyDepsFromNonLinkableDeps(
+      const UniqueVector<const Target*>& non_linkable_deps) const;
+
   // Classifies the dependency as linkable or nonlinkable with the current
   // target, adding it to the appropriate vector of |classified_deps|. If the
   // dependency is a source set we should link in, the source set's object

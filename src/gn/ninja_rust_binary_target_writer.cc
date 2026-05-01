@@ -168,9 +168,13 @@ void NinjaRustBinaryTargetWriter::Run() {
           non_linkable_dep->output_type() != Target::SOURCE_SET) {
         rustdeps.push_back(non_linkable_dep->dependency_output());
       }
-      order_only_deps.push_back(non_linkable_dep->dependency_output());
     }
   }
+
+  std::vector<OutputFile> group_order_only_deps =
+      GetOrderOnlyDepsFromNonLinkableDeps(classified_deps.non_linkable_deps);
+  order_only_deps.insert(order_only_deps.end(), group_order_only_deps.begin(),
+                         group_order_only_deps.end());
   for (const auto* linkable_dep : classified_deps.linkable_deps) {
     // Rust cdylibs are treated as non-Rust dependencies for linking purposes.
     if (linkable_dep->source_types_used().RustSourceUsed() &&

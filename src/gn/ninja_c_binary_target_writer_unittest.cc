@@ -9,6 +9,7 @@
 #include <utility>
 
 #include "gn/config.h"
+#include "gn/ninja_group_target_writer.h"
 #include "gn/ninja_target_command_util.h"
 #include "gn/pool.h"
 #include "gn/scheduler.h"
@@ -371,6 +372,98 @@ TEST_F(NinjaCBinaryTargetWriterTest,
         "  source_name_part = a\n"
         "\n"
         "build obj/foo/liba.a: alink obj/foo/liba.a.o || phony/foo/b.linkdeps\n"
+        "  arflags =\n"
+        "  output_extension =\n"
+        "  output_dir =\n";
+
+    EXPECT_EQ(expected, out.str());
+  }
+}
+
+// Tests that order-only dependencies bypass group targets and use .linkdeps
+// for transitive source set dependencies to avoid unnecessary dependencies
+// on non-object files (like .dwo files).
+TEST_F(NinjaCBinaryTargetWriterTest, GroupOrderOnlyDeps) {
+  Err err;
+  TestWithScope setup;
+
+  Value outputs_value(nullptr, Value::LIST);
+  outputs_value.list_value().push_back(
+      Value(nullptr, "{{target_out_dir}}/{{source_name_part}}.dwo"));
+
+  Config config(setup.settings(), Label(SourceDir("//foo/"), "split_dwarf"));
+  config.visibility().SetPublic();
+
+  std::vector<SubstitutionPattern> patterns;
+  for (const auto& v : outputs_value.list_value()) {
+    SubstitutionPattern pattern;
+    ASSERT_TRUE(pattern.Parse(v, &err));
+    patterns.push_back(std::move(pattern));
+  }
+  config.own_values().c_additional_outputs() = std::move(patterns);
+  ASSERT_TRUE(config.OnResolved(&err));
+
+  // Source set B (dependee)
+  Target target_b(setup.settings(), Label(SourceDir("//foo/"), "b"));
+  target_b.set_output_type(Target::SOURCE_SET);
+  target_b.sources().push_back(SourceFile("//foo/b.cc"));
+  target_b.sources().push_back(SourceFile("//foo/b2.cc"));
+  target_b.source_types_used().Set(SourceFile::SOURCE_CPP);
+  target_b.visibility().SetPublic();
+  target_b.configs().push_back(LabelConfigPair(&config));
+  target_b.SetToolchain(setup.toolchain());
+  ASSERT_TRUE(target_b.OnResolved(&err)) << err.message();
+
+  // Group E (depender)
+  Target target_e(setup.settings(), Label(SourceDir("//foo/"), "e"));
+  target_e.set_output_type(Target::GROUP);
+  target_e.visibility().SetPublic();
+  target_e.private_deps().push_back(LabelTargetPair(&target_b));
+  target_e.SetToolchain(setup.toolchain());
+  ASSERT_TRUE(target_e.OnResolved(&err)) << err.message();
+
+  // Verify E's output
+  {
+    std::ostringstream out;
+    NinjaGroupTargetWriter writer(&target_e, out);
+    writer.Run();
+
+    const char expected[] = "build phony/foo/e: phony phony/foo/b\n";
+
+    EXPECT_EQ(expected, out.str());
+  }
+
+  // Static library F (depender on group E)
+  Target target_f(setup.settings(), Label(SourceDir("//foo/"), "f"));
+  target_f.set_output_type(Target::STATIC_LIBRARY);
+  target_f.sources().push_back(SourceFile("//foo/f.cc"));
+  target_f.source_types_used().Set(SourceFile::SOURCE_CPP);
+  target_f.private_deps().push_back(LabelTargetPair(&target_e));
+  target_f.configs().push_back(LabelConfigPair(&config));
+  target_f.SetToolchain(setup.toolchain());
+  ASSERT_TRUE(target_f.OnResolved(&err)) << err.message();
+
+  // Verify F's output
+  {
+    std::ostringstream out;
+    NinjaCBinaryTargetWriter writer(&target_f, out);
+    writer.Run();
+
+    const char expected[] =
+        "defines =\n"
+        "include_dirs =\n"
+        "cflags =\n"
+        "cflags_cc =\n"
+        "root_out_dir = .\n"
+        "target_gen_dir = gen/foo\n"
+        "target_out_dir = obj/foo\n"
+        "target_output_name = libf\n"
+        "\n"
+        "build obj/foo/libf.f.o obj/foo/f.dwo: cxx ../../foo/f.cc\n"
+        "  source_file_part = f.cc\n"
+        "  source_name_part = f\n"
+        "\n"
+        "build obj/foo/libf.a: alink obj/foo/libf.f.o || phony/foo/b.linkdeps\n"
         "  arflags =\n"
         "  output_extension =\n"
         "  output_dir =\n";

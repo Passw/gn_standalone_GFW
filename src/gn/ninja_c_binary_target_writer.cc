@@ -805,19 +805,14 @@ void NinjaCBinaryTargetWriter::WriteLibsList(
 
 void NinjaCBinaryTargetWriter::WriteOrderOnlyDependencies(
     const UniqueVector<const Target*>& non_linkable_deps) {
-  if (!non_linkable_deps.empty()) {
-    out_ << " ||";
+  std::vector<OutputFile> outputs_to_write =
+      GetOrderOnlyDepsFromNonLinkableDeps(non_linkable_deps);
 
-    // Non-linkable targets.
-    for (auto* non_linkable_dep : non_linkable_deps) {
-      if (non_linkable_dep->has_dependency_output()) {
-        out_ << " ";
-        OutputFile dep_output = non_linkable_dep->dependency_output();
-        if (non_linkable_dep->output_type() == Target::SOURCE_SET) {
-          dep_output.value().append(".linkdeps");
-        }
-        path_output_.WriteFile(out_, dep_output);
-      }
+  if (!outputs_to_write.empty()) {
+    out_ << " ||";
+    for (const auto& output : outputs_to_write) {
+      out_ << " ";
+      path_output_.WriteFile(out_, output);
     }
   }
 }
